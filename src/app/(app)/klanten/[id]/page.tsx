@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getClientDetail } from "@/lib/queries";
-import { getContactStatus, formatDate } from "@/lib/domain";
+import { getContactStatus, formatDate, CONTACT_TYPE_LABELS } from "@/lib/domain";
 import UrgencyBadge from "@/components/UrgencyBadge";
 import ContactMomentsSection from "./_components/ContactMomentsSection";
 import InBodySection from "./_components/InBodySection";
@@ -14,8 +14,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const client = await getClientDetail(id);
   if (!client) notFound();
 
-  const lastContact = client.contactMoments[0]?.date ?? null;
-  const status = getContactStatus(lastContact, client.contactIntervalWeeks);
+  const lastMoment = client.contactMoments[0] ?? null;
+  const status = getContactStatus(lastMoment?.date ?? null, client.contactIntervalWeeks, new Date(), lastMoment?.type ?? null);
 
   return (
     <div className="space-y-8">
@@ -33,6 +33,12 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           </div>
           <p className="mt-1 text-sm text-slate-500">
             Klant sinds {formatDate(client.startDate)} &middot; interval elke {client.contactIntervalWeeks} weken
+            {client.ptSessionsPerWeek != null &&
+              ` · traint ${client.ptSessionsPerWeek}x/week${client.ptSessionMinutes ? ` à ${client.ptSessionMinutes} min` : ""}`}
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            Laatste contactmoment:{" "}
+            {status.lastContactType ? `${CONTACT_TYPE_LABELS[status.lastContactType]} op ${formatDate(status.lastContactDate)}` : "nog geen contact"}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-600">
             {client.email && <span>{client.email}</span>}

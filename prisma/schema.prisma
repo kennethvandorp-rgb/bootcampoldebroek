@@ -42,6 +42,9 @@ model Client {
   active              Boolean  @default(true)
   // Gewenst contactinterval in weken (studio-afspraak: elke 4-6 weken)
   contactIntervalWeeks Int     @default(5)
+  // PT-trainingsfrequentie, gebruikt voor de slimme intervalsuggestie
+  ptSessionsPerWeek   Int?
+  ptSessionMinutes    Int?
   notes               String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -51,6 +54,17 @@ model Client {
   nutritionAnalyses   NutritionAnalysis[]
   goals               Goal[]
   actionItems         ActionItem[]
+}
+
+// Logt elke automatische contactmoment-controle (via de cron-endpoint), zodat
+// zichtbaar is wanneer de laatste automatische waarschuwingscheck heeft gelopen.
+model AutomationRun {
+  id             String   @id @default(cuid())
+  runAt          DateTime @default(now())
+  overdueCount   Int
+  dueSoonCount   Int
+  neverCount     Int
+  notifiedByEmail Boolean @default(false)
 }
 
 model ContactMoment {

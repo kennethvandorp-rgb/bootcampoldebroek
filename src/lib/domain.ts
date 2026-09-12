@@ -26,6 +26,7 @@ export type ContactUrgency = "nooit" | "achterstallig" | "binnenkort" | "op-sche
 export interface ContactStatus {
   urgency: ContactUrgency;
   lastContactDate: Date | null;
+  lastContactType: ContactType | null;
   dueDate: Date | null;
   daysUntilDue: number | null;
 }
@@ -39,10 +40,11 @@ const DAY_MS = 1000 * 60 * 60 * 24;
 export function getContactStatus(
   lastContactDate: Date | null,
   contactIntervalWeeks: number,
-  now: Date = new Date()
+  now: Date = new Date(),
+  lastContactType: ContactType | null = null
 ): ContactStatus {
   if (!lastContactDate) {
-    return { urgency: "nooit", lastContactDate: null, dueDate: null, daysUntilDue: null };
+    return { urgency: "nooit", lastContactDate: null, lastContactType: null, dueDate: null, daysUntilDue: null };
   }
 
   const dueDate = new Date(lastContactDate.getTime() + contactIntervalWeeks * 7 * DAY_MS);
@@ -57,7 +59,19 @@ export function getContactStatus(
     urgency = "op-schema";
   }
 
-  return { urgency, lastContactDate, dueDate, daysUntilDue };
+  return { urgency, lastContactDate, lastContactType, dueDate, daysUntilDue };
+}
+
+/**
+ * Slimme richtlijn voor het contactinterval, gebaseerd op hoe vaak een klant
+ * per week traint: wie vaker traint boekt sneller voortgang en heeft dus baat
+ * bij een kortere terugkoppelingscyclus op voeding en InBody-resultaten.
+ */
+export function suggestContactIntervalWeeks(ptSessionsPerWeek: number | null | undefined): number {
+  if (ptSessionsPerWeek == null) return 5;
+  if (ptSessionsPerWeek >= 3) return 4;
+  if (ptSessionsPerWeek === 2) return 5;
+  return 6;
 }
 
 export function formatDate(date: Date | string | null | undefined): string {

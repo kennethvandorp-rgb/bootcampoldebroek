@@ -15,6 +15,11 @@ function dateOrNull(formData: FormData, key: string): Date | null {
   return value ? new Date(value) : null;
 }
 
+function intOrNull(formData: FormData, key: string): number | null {
+  const value = str(formData, key);
+  return value ? Number(value) : null;
+}
+
 export async function createClient(formData: FormData) {
   const firstName = str(formData, "firstName");
   const lastName = str(formData, "lastName");
@@ -31,6 +36,8 @@ export async function createClient(formData: FormData) {
       birthDate: dateOrNull(formData, "birthDate"),
       startDate: dateOrNull(formData, "startDate") ?? new Date(),
       contactIntervalWeeks: Number(str(formData, "contactIntervalWeeks") ?? "5"),
+      ptSessionsPerWeek: intOrNull(formData, "ptSessionsPerWeek"),
+      ptSessionMinutes: intOrNull(formData, "ptSessionMinutes"),
       notes: str(formData, "notes"),
     },
   });
@@ -56,6 +63,8 @@ export async function updateClient(clientId: string, formData: FormData) {
       phone: str(formData, "phone"),
       birthDate: dateOrNull(formData, "birthDate"),
       contactIntervalWeeks: Number(str(formData, "contactIntervalWeeks") ?? "5"),
+      ptSessionsPerWeek: intOrNull(formData, "ptSessionsPerWeek"),
+      ptSessionMinutes: intOrNull(formData, "ptSessionMinutes"),
       notes: str(formData, "notes"),
       active: formData.get("active") === "on",
     },

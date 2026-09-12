@@ -1,4 +1,5 @@
 import { toDateInputValue } from "@/lib/domain";
+import TrainingAndIntervalFields from "@/components/TrainingAndIntervalFields";
 
 export interface ClientFormValues {
   firstName?: string;
@@ -7,6 +8,8 @@ export interface ClientFormValues {
   phone?: string | null;
   birthDate?: Date | string | null;
   contactIntervalWeeks?: number;
+  ptSessionsPerWeek?: number | null;
+  ptSessionMinutes?: number | null;
   notes?: string | null;
   active?: boolean;
 }
@@ -35,23 +38,11 @@ export default function ClientForm({
           type="date"
           defaultValue={toDateInputValue(initial?.birthDate)}
         />
-        <div>
-          <label htmlFor="contactIntervalWeeks" className="block text-sm font-medium text-slate-700">
-            Contactinterval (weken)
-          </label>
-          <select
-            id="contactIntervalWeeks"
-            name="contactIntervalWeeks"
-            defaultValue={String(initial?.contactIntervalWeeks ?? 5)}
-            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-          >
-            {[4, 5, 6].map((n) => (
-              <option key={n} value={n}>
-                Elke {n} weken
-              </option>
-            ))}
-          </select>
-        </div>
+        <TrainingAndIntervalFields
+          initialSessionsPerWeek={initial?.ptSessionsPerWeek}
+          initialSessionMinutes={initial?.ptSessionMinutes}
+          initialIntervalWeeks={initial?.contactIntervalWeeks}
+        />
       </div>
 
       <div>

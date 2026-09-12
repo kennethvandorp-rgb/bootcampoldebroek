@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getClientsWithStatus, sortByUrgency } from "@/lib/queries";
-import { formatDate } from "@/lib/domain";
+import { CONTACT_TYPE_LABELS, formatDate } from "@/lib/domain";
 import UrgencyBadge from "@/components/UrgencyBadge";
 
 export default async function ClientsPage() {
@@ -46,7 +46,7 @@ function ClientTable({ clients }: { clients: Awaited<ReturnType<typeof getClient
         <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
           <tr>
             <th className="px-4 py-2">Naam</th>
-            <th className="px-4 py-2">Laatste contact</th>
+            <th className="px-4 py-2">Laatste contactmoment</th>
             <th className="px-4 py-2">Interval</th>
             <th className="px-4 py-2">Status</th>
           </tr>
@@ -59,7 +59,11 @@ function ClientTable({ clients }: { clients: Awaited<ReturnType<typeof getClient
                   {client.firstName} {client.lastName}
                 </Link>
               </td>
-              <td className="px-4 py-2 text-slate-600">{formatDate(client.contactStatus.lastContactDate)}</td>
+              <td className="px-4 py-2 text-slate-600">
+                {client.contactStatus.lastContactType
+                  ? `${CONTACT_TYPE_LABELS[client.contactStatus.lastContactType]} · ${formatDate(client.contactStatus.lastContactDate)}`
+                  : "Nog geen contact"}
+              </td>
               <td className="px-4 py-2 text-slate-600">elke {client.contactIntervalWeeks} weken</td>
               <td className="px-4 py-2">
                 <UrgencyBadge urgency={client.contactStatus.urgency} />
