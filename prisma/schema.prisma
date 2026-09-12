@@ -1,0 +1,136 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum ContactType {
+  WHATSAPP
+  EMAIL
+  INBODY
+  BELAFSPRAAK
+  PERSOONLIJK
+  OVERIG
+}
+
+enum GoalStatus {
+  OPEN
+  BEZIG
+  BEHAALD
+  GESTOPT
+}
+
+enum ActionItemStatus {
+  OPEN
+  AFGEROND
+}
+
+model Client {
+  id                  String   @id @default(cuid())
+  firstName           String
+  lastName            String
+  email               String?
+  phone               String?
+  birthDate           DateTime?
+  startDate           DateTime @default(now())
+  active              Boolean  @default(true)
+  // Gewenst contactinterval in weken (studio-afspraak: elke 4-6 weken)
+  contactIntervalWeeks Int     @default(5)
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  contactMoments      ContactMoment[]
+  inBodyMeasurements  InBodyMeasurement[]
+  nutritionAnalyses   NutritionAnalysis[]
+  goals               Goal[]
+  actionItems         ActionItem[]
+}
+
+model ContactMoment {
+  id          String      @id @default(cuid())
+  clientId    String
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type        ContactType
+  date        DateTime    @default(now())
+  summary     String
+  notes       String?
+  createdAt   DateTime    @default(now())
+
+  inBodyMeasurement InBodyMeasurement?
+
+  @@index([clientId, date])
+}
+
+model InBodyMeasurement {
+  id                String         @id @default(cuid())
+  clientId          String
+  client            Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contactMomentId   String?        @unique
+  contactMoment     ContactMoment? @relation(fields: [contactMomentId], references: [id], onDelete: SetNull)
+  date              DateTime       @default(now())
+  weightKg          Float?
+  skeletalMuscleMassKg Float?
+  bodyFatPercent    Float?
+  bodyFatMassKg     Float?
+  bmi               Float?
+  visceralFatLevel  Float?
+  totalBodyWaterL   Float?
+  bmrKcal           Int?
+  notes             String?
+  createdAt         DateTime       @default(now())
+
+  @@index([clientId, date])
+}
+
+model NutritionAnalysis {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  date          DateTime @default(now())
+  kcalTarget    Int?
+  proteinGrams  Int?
+  carbsGrams    Int?
+  fatGrams      Int?
+  summary       String
+  advice        String?
+  createdAt     DateTime @default(now())
+
+  @@index([clientId, date])
+}
+
+model Goal {
+  id          String     @id @default(cuid())
+  clientId    String
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  description String
+  targetDate  DateTime?
+  status      GoalStatus @default(OPEN)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  actionItems ActionItem[]
+
+  @@index([clientId, status])
+}
+
+model ActionItem {
+  id          String           @id @default(cuid())
+  clientId    String
+  client      Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  goalId      String?
+  goal        Goal?            @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  description String
+  dueDate     DateTime?
+  status      ActionItemStatus @default(OPEN)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([clientId, status])
+}
