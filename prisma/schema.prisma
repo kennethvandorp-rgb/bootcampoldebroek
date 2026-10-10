@@ -13,10 +13,74 @@ datasource db {
 enum ContactType {
   WHATSAPP
   EMAIL
+  TELEFONISCH
   INBODY
-  BELAFSPRAAK
-  PERSOONLIJK
+  PT_SESSIE
   OVERIG
+}
+
+enum UserRole {
+  ADMIN
+  TRAINER
+}
+
+// Trainer (of beheerder) die kan inloggen en klanten begeleidt.
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  role         UserRole @default(TRAINER)
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions       Session[]
+  clients        ClientTrainer[]
+  contactMoments ContactMoment[]
+  scheduledTasks ScheduledTask[]
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Many-to-many: een klant kan door meerdere trainers tegelijk begeleid worden.
+model ClientTrainer {
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  trainerId  String
+  trainer    User     @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@id([clientId, trainerId])
+  @@index([trainerId])
+}
+
+// Gepland vervolgcontact of taak voor een trainer ("doorplannen").
+model ScheduledTask {
+  id              String         @id @default(cuid())
+  clientId        String
+  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  trainerId       String
+  trainer         User           @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  // Streefdatum, opgeslagen als middernacht UTC van de kalenderdag
+  dueDate         DateTime
+  note            String
+  completed       Boolean        @default(false)
+  completedAt     DateTime?
+  contactMomentId String?        @unique
+  contactMoment   ContactMoment? @relation(fields: [contactMomentId], references: [id], onDelete: SetNull)
+  createdAt       DateTime       @default(now())
+
+  @@index([trainerId, completed, dueDate])
+  @@index([clientId, completed])
 }
 
 enum GoalStatus {
@@ -40,9 +104,9 @@ model Client {
   birthDate           DateTime?
   startDate           DateTime @default(now())
   active              Boolean  @default(true)
-  // Gewenst contactinterval in weken (studio-afspraak: elke 4-6 weken)
-  contactIntervalWeeks Int     @default(5)
-  // PT-trainingsfrequentie, gebruikt voor de slimme intervalsuggestie
+  // Gedenormaliseerd: datum/tijd van het laatste contactmoment. De status
+  // (groen/oranje/rood) wordt hieruit bij elke weergave berekend.
+  lastContactDate     DateTime?
   ptSessionsPerWeek   Int?
   ptSessionMinutes    Int?
   notes               String?
@@ -54,6 +118,8 @@ model Client {
   nutritionAnalyses   NutritionAnalysis[]
   goals               Goal[]
   actionItems         ActionItem[]
+  trainers            ClientTrainer[]
+  scheduledTasks      ScheduledTask[]
 }
 
 // Logt elke automatische contactmoment-controle (via de cron-endpoint), zodat
@@ -67,17 +133,22 @@ model AutomationRun {
   notifiedByEmail Boolean @default(false)
 }
 
+// Interactielog: elk contactmoment met een klant buiten (of tijdens) de PT-sessies.
 model ContactMoment {
   id          String      @id @default(cuid())
   clientId    String
   client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  trainerId   String?
+  trainer     User?       @relation(fields: [trainerId], references: [id], onDelete: SetNull)
   type        ContactType
+  // Datum én tijd van het contact
   date        DateTime    @default(now())
-  summary     String
+  summary     String?
   notes       String?
   createdAt   DateTime    @default(now())
 
   inBodyMeasurement InBodyMeasurement?
+  scheduledTask     ScheduledTask?
 
   @@index([clientId, date])
 }

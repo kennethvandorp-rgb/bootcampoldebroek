@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getContactWarnings, type ContactWarningSummary } from "@/lib/queries";
-import { CONTACT_TYPE_LABELS, formatDate } from "@/lib/domain";
+import { describeDaysSince } from "@/lib/domain";
 
 export interface ContactCheckResult {
   summary: ContactWarningSummary;
@@ -22,7 +22,7 @@ export async function runContactCheck(): Promise<ContactCheckResult> {
   let emailSent = false;
   let emailError: string | null = null;
 
-  const needsAttention = summary.overdue.length + summary.dueSoon.length + summary.never.length;
+  const needsAttention = summary.red.length + summary.orange.length;
   if (needsAttention > 0) {
     const result = await sendWarningEmail(summary);
     emailSent = result.sent;
@@ -31,8 +31,8 @@ export async function runContactCheck(): Promise<ContactCheckResult> {
 
   await prisma.automationRun.create({
     data: {
-      overdueCount: summary.overdue.length,
-      dueSoonCount: summary.dueSoon.length,
+      overdueCount: summary.red.length,
+      dueSoonCount: summary.orange.length,
       neverCount: summary.never.length,
       notifiedByEmail: emailSent,
     },
@@ -53,23 +53,13 @@ async function sendWarningEmail(
   }
 
   const lines: string[] = [];
-  if (summary.overdue.length > 0) {
-    lines.push(`Achterstallig (${summary.overdue.length}):`);
-    for (const c of summary.overdue) {
-      lines.push(`  - ${c.firstName} ${c.lastName} — laatste contact: ${describeLastContact(c.contactStatus)}`);
-    }
+  if (summary.red.length > 0) {
+    lines.push(`Rood – actie vereist, > 14 dagen geen contact (${summary.red.length}):`);
+    for (const c of summary.red) lines.push(`  - ${describeClient(c)}`);
   }
-  if (summary.dueSoon.length > 0) {
-    lines.push(`Binnenkort aan de beurt (${summary.dueSoon.length}):`);
-    for (const c of summary.dueSoon) {
-      lines.push(`  - ${c.firstName} ${c.lastName} — laatste contact: ${describeLastContact(c.contactStatus)}`);
-    }
-  }
-  if (summary.never.length > 0) {
-    lines.push(`Nog nooit contact gehad (${summary.never.length}):`);
-    for (const c of summary.never) {
-      lines.push(`  - ${c.firstName} ${c.lastName}`);
-    }
+  if (summary.orange.length > 0) {
+    lines.push(`Oranje – aandacht nodig, 7-14 dagen geen contact (${summary.orange.length}):`);
+    for (const c of summary.orange) lines.push(`  - ${describeClient(c)}`);
   }
 
   try {
@@ -82,7 +72,7 @@ async function sendWarningEmail(
       body: JSON.stringify({
         from: fromEmail,
         to: toEmail,
-        subject: `PT Studio Oldebroek: ${summary.overdue.length + summary.dueSoon.length + summary.never.length} klant(en) vragen aandacht`,
+        subject: `PT Studio Oldebroek: ${summary.red.length + summary.orange.length} klant(en) vragen aandacht`,
         text: lines.join("\n"),
       }),
     });
@@ -98,8 +88,7 @@ async function sendWarningEmail(
   }
 }
 
-function describeLastContact(status: { lastContactDate: Date | null; lastContactType: string | null }): string {
-  if (!status.lastContactDate || !status.lastContactType) return "nog geen contact";
-  const label = CONTACT_TYPE_LABELS[status.lastContactType as keyof typeof CONTACT_TYPE_LABELS] ?? status.lastContactType;
-  return `${label} op ${formatDate(status.lastContactDate)}`;
+function describeClient(c: ContactWarningSummary["red"][number]): string {
+  const trainers = c.trainers.map((t) => t.trainer.name).join(", ") || "geen trainer";
+  return `${c.firstName} ${c.lastName} (${trainers}) — laatste contact: ${describeDaysSince(c.contactStatus.daysSinceContact).toLowerCase()}`;
 }

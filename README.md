@@ -1,35 +1,61 @@
-# Klantvolgsysteem PT Studio Oldebroek
+# CRM & retentiesysteem PT Studio Oldebroek
 
-Een systeem om klanten van de PT-studio te monitoren op voeding en InBody-metingen,
-met bewaking van het contactmoment-interval (elke 4-6 weken via WhatsApp, e-mail of
-een InBody-meting).
+Een webgebaseerd CRM voor personal trainers om klantcontact **buiten de PT-sessies** te
+monitoren, zodat geen enkele klant uit beeld raakt. Werkt op mobiel en desktop.
 
 ## Functionaliteit
 
-- **Klantbeheer** — klanten aanmaken/bewerken, met een instelbaar contactinterval (4, 5 of 6 weken).
-- **Contactmomenten** — leg vast wanneer en hoe (WhatsApp, e-mail, InBody-meting, belafspraak,
-  persoonlijk gesprek, overig) je contact had met een klant.
-- **InBody-metingen** — registreer gewicht, spiermassa, vetpercentage, BMI, visceraal vet,
-  lichaamswater en BMR per meting, met historie per klant. Een nieuwe InBody-meting kan
-  automatisch ook als contactmoment worden geregistreerd.
-- **Voedingsanalyses** — leg voedingsanalyses en adviezen vast, inclusief kcal- en
-  macronutriëntendoelen.
-- **Doelen en actiepunten** — leg doelen vast per klant (met status: open/bezig/behaald/gestopt)
-  en koppel actiepunten met deadlines.
-- **Dashboard** — ziet in één oogopslag welke klanten achterstallig zijn, binnenkort een
-  contactmoment nodig hebben, of nog nooit zijn benaderd, met een waarschuwingsbanner zodra
-  er klanten aandacht nodig hebben.
-- **Slimme intervalsuggestie** — vul bij een klant in hoeveel keer per week en hoe lang die
-  traint; het systeem stelt op basis daarvan een passend contactinterval voor (wie vaker
-  traint boekt sneller voortgang en heeft baat bij kortere terugkoppeling).
-- **Automatische controle en waarschuwing** — een cron-endpoint (`/api/cron/contact-check`)
-  controleert periodiek welke klanten aandacht nodig hebben, legt dit vast, en kan optioneel
-  een waarschuwingsmail sturen. Kan ook handmatig gestart worden via de knop "Controleer nu"
-  op het dashboard.
+### Trainers & klanten
+- **Trainer-accounts** — elke trainer logt in met een eigen e-mailadres en wachtwoord.
+  Beheerders kunnen trainers toevoegen, deactiveren en wachtwoorden resetten (pagina *Trainers*).
+- **Multi-assign** — een klant kan aan één of meerdere trainers tegelijk gekoppeld worden.
+  Met "Mijn klant maken" op de klantpagina koppel je jezelf snel.
+- **Filters** — overal te filteren op *Mijn klanten* / *Alle klanten*, op een specifieke trainer
+  en op status (groen/oranje/rood). Filters staan in de URL, dus een selectie is te bookmarken.
 
-Het systeem berekent automatisch of een klant "op schema", "binnenkort" aan de beurt, of
-"achterstallig" is, op basis van het laatste contactmoment (datum én type: WhatsApp, e-mail,
-InBody-meting, ...) en het ingestelde interval.
+### Contactmomenten (interactielog)
+- Typen: WhatsApp, E-mail, Telefonisch, InBody-meting, PT-sessie, Overig.
+- Per contact: type, datum én tijd, uitvoerende trainer en notitie/inhoud van het gesprek.
+- **Quick Log** op elke klantkaart: klik op *⚡ Quick log* en daarna op het type — binnen
+  2 klikken is een appje of meting gelogd (nu, door jou; optioneel met korte notitie).
+- Complete **tijdlijn** per klant, inclusief gekoppelde InBody-waarden.
+
+### Automatische status
+Berekend op basis van het **laatste** contactmoment:
+
+| Status | Betekenis | Regel |
+| --- | --- | --- |
+| 🟢 Groen | Actief | contact < 7 dagen geleden |
+| 🟠 Oranje | Aandacht nodig | contact 7 t/m 14 dagen geleden |
+| 🔴 Rood | Actie vereist | > 14 dagen geen contact, of nog nooit contact |
+
+De datum van het laatste contact wordt opgeslagen op de klant (`lastContactDate`); de status
+zelf wordt bij elke weergave berekend, zodat die nooit verouderd is.
+
+### Taken & reminders (doorplannen)
+- Plan per klant een vervolgcontact of taak in met streefdatum, toegewezen trainer en
+  instructie (bijv. "InBody nameting inplannen" of "Checken hoe de spierpijn is").
+- Op de streefdatum verschijnt de taak in **Vandaag te doen** op het dashboard van die trainer;
+  verlopen taken blijven staan met het label *Te laat*.
+- Bij *Afronden* kies je direct een contacttype: de taak wordt dan omgezet in een gelogd
+  contactmoment (en de klantstatus springt weer op groen). Alleen afronden kan ook.
+
+### Overig
+- InBody-historie met verschil t.o.v. de vorige meting, voedingsanalyses, doelen en actiepunten.
+- Automatische controle met optionele waarschuwingsmail (zie hieronder).
+
+## Datamodel
+
+| Model | Velden (kern) |
+| --- | --- |
+| `User` (trainer) | id, name, email, role (`ADMIN`/`TRAINER`), passwordHash, active |
+| `Client` | id, firstName, lastName, email, phone, lastContactDate, active (+ status berekend) |
+| `ClientTrainer` | clientId, trainerId — many-to-many |
+| `ContactMoment` (interactielog) | id, clientId, trainerId, type, date (datum+tijd), notes |
+| `ScheduledTask` | id, clientId, trainerId, dueDate, note, completed, completedAt, contactMomentId |
+
+Alle tijden worden weergegeven en ingevoerd in de tijdzone `Europe/Amsterdam`, ongeacht de
+tijdzone van de server.
 
 ## Techstack
 
@@ -39,37 +65,37 @@ InBody-meting, ...) en het ingestelde interval.
 
 ## Aan de slag
 
-1. Installeer dependencies:
+```bash
+npm install                 # installeert ook de Prisma client (postinstall)
+cp .env.example .env
+npm run db:migrate          # database aanmaken / bijwerken
+npm run db:seed             # optioneel: demodata (alleen als er nog geen accounts zijn)
+npm run dev
+```
 
-   ```bash
-   npm install
-   ```
+Open [http://localhost:3000](http://localhost:3000).
 
-2. Kopieer `.env.example` naar `.env` en vul een wachtwoord in:
+- **Met demodata:** log in als `anna@ptstudio.nl` (beheerder), `mark@ptstudio.nl` of
+  `sanne@ptstudio.nl`, wachtwoord `welkom123`.
+- **Zonder demodata:** de loginpagina vraagt je het eerste beheerdersaccount aan te maken.
+  Daarna voeg je via *Trainers* de andere trainers toe.
 
-   ```bash
-   cp .env.example .env
-   ```
+### Upgraden vanaf de vorige versie (gedeeld wachtwoord, 4-6 weken-interval)
 
-3. Zet de database klaar:
-
-   ```bash
-   npx prisma migrate deploy
-   ```
-
-4. Start de ontwikkelserver:
-
-   ```bash
-   npm run dev
-   ```
-
-   Open [http://localhost:3000](http://localhost:3000) en log in met het wachtwoord uit `.env`.
+`npm run db:migrate` zet bestaande data automatisch om: contacttype *Belafspraak* wordt
+*Telefonisch*, *Persoonlijk gesprek* wordt *Overig*, en de laatste contactdatum per klant wordt
+gevuld. Het instelbare contactinterval (4-6 weken) is vervangen door de vaste 7/14-dagenregel.
+`APP_PASSWORD` is niet meer nodig. Bij de eerste keer openen maak je een beheerdersaccount
+aan; bestaande klanten hebben dan nog geen trainer — koppel ze via *Alle klanten* →
+klant → *Mijn klant maken* of *Bewerken*.
 
 ## Beveiliging
 
-Toegang tot het systeem is beveiligd met één gedeeld wachtwoord (`APP_PASSWORD` in `.env`),
-bedoeld voor intern gebruik binnen de studio. Dit is bewust eenvoudig gehouden; voor gebruik
-door meerdere medewerkers met eigen accounts is een uitgebreidere authenticatie-oplossing nodig.
+- Wachtwoorden worden gehasht met scrypt; sessies staan in de database (httpOnly-cookie,
+  30 dagen geldig). Deactiveren van een trainer logt die direct uit.
+- Alle pagina's en server actions controleren de sessie server-side.
+- Alle trainers kunnen alle klanten inzien (nodig voor "Alle klanten" en overdracht);
+  alleen beheerders kunnen trainer-accounts beheren.
 
 ## Automatische waarschuwing koppelen
 
@@ -114,5 +140,5 @@ Schemawijzigingen worden beheerd via Prisma-migraties in `prisma/migrations`. Na
 in `prisma/schema.prisma`:
 
 ```bash
-npx prisma migrate dev --name <omschrijving>
+npx prisma migrate dev --config prisma7.config.ts --name <omschrijving>
 ```

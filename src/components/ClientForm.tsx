@@ -1,5 +1,5 @@
 import { toDateInputValue } from "@/lib/domain";
-import TrainingAndIntervalFields from "@/components/TrainingAndIntervalFields";
+import { TrainerCheckboxes, INPUT_CLASS } from "@/components/fields";
 
 export interface ClientFormValues {
   firstName?: string;
@@ -7,7 +7,6 @@ export interface ClientFormValues {
   email?: string | null;
   phone?: string | null;
   birthDate?: Date | string | null;
-  contactIntervalWeeks?: number;
   ptSessionsPerWeek?: number | null;
   ptSessionMinutes?: number | null;
   notes?: string | null;
@@ -17,11 +16,15 @@ export interface ClientFormValues {
 export default function ClientForm({
   action,
   initial,
+  trainers,
+  selectedTrainerIds,
   submitLabel,
   showActiveToggle,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   initial?: ClientFormValues;
+  trainers: { id: string; name: string }[];
+  selectedTrainerIds: string[];
   submitLabel: string;
   showActiveToggle?: boolean;
 }) {
@@ -31,31 +34,36 @@ export default function ClientForm({
         <Field label="Voornaam" name="firstName" required defaultValue={initial?.firstName} />
         <Field label="Achternaam" name="lastName" required defaultValue={initial?.lastName} />
         <Field label="E-mail" name="email" type="email" defaultValue={initial?.email ?? ""} />
-        <Field label="Telefoon" name="phone" defaultValue={initial?.phone ?? ""} />
+        <Field label="Telefoon" name="phone" type="tel" defaultValue={initial?.phone ?? ""} />
         <Field
           label="Geboortedatum"
           name="birthDate"
           type="date"
           defaultValue={toDateInputValue(initial?.birthDate)}
         />
-        <TrainingAndIntervalFields
-          initialSessionsPerWeek={initial?.ptSessionsPerWeek}
-          initialSessionMinutes={initial?.ptSessionMinutes}
-          initialIntervalWeeks={initial?.contactIntervalWeeks}
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <Field
+            label="PT-sessies/week"
+            name="ptSessionsPerWeek"
+            type="number"
+            defaultValue={initial?.ptSessionsPerWeek?.toString() ?? ""}
+          />
+          <Field
+            label="Min. per sessie"
+            name="ptSessionMinutes"
+            type="number"
+            defaultValue={initial?.ptSessionMinutes?.toString() ?? ""}
+          />
+        </div>
       </div>
+
+      <TrainerCheckboxes trainers={trainers} selected={selectedTrainerIds} />
 
       <div>
         <label htmlFor="notes" className="block text-sm font-medium text-slate-700">
           Notities
         </label>
-        <textarea
-          id="notes"
-          name="notes"
-          rows={3}
-          defaultValue={initial?.notes ?? ""}
-          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-        />
+        <textarea id="notes" name="notes" rows={3} defaultValue={initial?.notes ?? ""} className={INPUT_CLASS} />
       </div>
 
       {showActiveToggle && (
@@ -65,7 +73,7 @@ export default function ClientForm({
             name="active"
             type="checkbox"
             defaultChecked={initial?.active ?? true}
-            className="h-4 w-4 rounded border-slate-300"
+            className="h-4 w-4 rounded border-slate-300 accent-emerald-600"
           />
           <label htmlFor="active" className="text-sm text-slate-700">
             Actieve klant
@@ -75,7 +83,7 @@ export default function ClientForm({
 
       <button
         type="submit"
-        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+        className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
       >
         {submitLabel}
       </button>
@@ -107,8 +115,9 @@ function Field({
         name={name}
         type={type}
         required={required}
+        min={type === "number" ? 0 : undefined}
         defaultValue={defaultValue}
-        className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+        className={INPUT_CLASS}
       />
     </div>
   );

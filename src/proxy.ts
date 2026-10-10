@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE = "pt_session";
 
+/**
+ * Snelle eerste controle: zonder sessiecookie direct naar /login. De sessie
+ * zelf wordt server-side gevalideerd (zie `requireUser` in src/lib/auth.ts).
+ */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -14,10 +18,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const session = request.cookies.get(SESSION_COOKIE)?.value;
-  const appPassword = process.env.APP_PASSWORD;
-
-  if (!appPassword || session === appPassword) {
+  if (request.cookies.get(SESSION_COOKIE)?.value) {
     return NextResponse.next();
   }
 

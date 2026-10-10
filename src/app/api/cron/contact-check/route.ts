@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     checkedAt: new Date().toISOString(),
-    overdue: summary.overdue.map((c) => `${c.firstName} ${c.lastName}`),
-    dueSoon: summary.dueSoon.map((c) => `${c.firstName} ${c.lastName}`),
+    red: summary.red.map((c) => `${c.firstName} ${c.lastName}`),
+    orange: summary.orange.map((c) => `${c.firstName} ${c.lastName}`),
     never: summary.never.map((c) => `${c.firstName} ${c.lastName}`),
     emailSent,
     emailError,

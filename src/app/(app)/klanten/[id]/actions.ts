@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ContactType, GoalStatus, ActionItemStatus } from "@/generated/prisma/client";
+import { requireUser } from "@/lib/auth";
+import { CONTACT_TYPES, parseDueDate, parseLocalDateTime } from "@/lib/domain";
+import { refreshLastContactDate } from "@/lib/queries";
 
 function str(formData: FormData, key: string): string | null {
   const value = formData.get(key);
@@ -32,37 +35,155 @@ function floatOrNull(formData: FormData, key: string): number | null {
   return value ? Number(value) : null;
 }
 
-function revalidateClient(clientId: string) {
-  revalidatePath(`/klanten/${clientId}`);
-  revalidatePath("/klanten");
-  revalidatePath("/");
+function contactType(value: string | null): ContactType {
+  if (!value || !CONTACT_TYPES.includes(value as ContactType)) throw new Error("Ongeldig contacttype");
+  return value as ContactType;
 }
 
-// ---- Contactmomenten ----
+async function trainerIdOrDefault(formData: FormData, fallback: string): Promise<string> {
+  const id = str(formData, "trainerId");
+  if (!id) return fallback;
+  const trainer = await prisma.user.findFirst({ where: { id, active: true }, select: { id: true } });
+  if (!trainer) throw new Error("Onbekende trainer");
+  return trainer.id;
+}
+
+function revalidateAll() {
+  revalidatePath("/", "layout");
+}
+
+// ---- Contactmomenten (interactielog) ----
 
 export async function createContactMoment(clientId: string, formData: FormData) {
-  await prisma.contactMoment.create({
-    data: {
-      clientId,
-      type: required(formData, "type") as ContactType,
-      date: dateOrNull(formData, "date") ?? new Date(),
-      summary: required(formData, "summary"),
-      notes: str(formData, "notes"),
-    },
+  const user = await requireUser();
+  const dateValue = str(formData, "date");
+  // Buiten de transactie: SQLite heeft één schrijfverbinding
+  const trainerId = await trainerIdOrDefault(formData, user.id);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.contactMoment.create({
+      data: {
+        clientId,
+        trainerId,
+        type: contactType(str(formData, "type")),
+        date: dateValue ? parseLocalDateTime(dateValue) : new Date(),
+        notes: str(formData, "notes"),
+      },
+    });
+    await refreshLastContactDate(clientId, tx);
   });
-  revalidateClient(clientId);
+
+  revalidateAll();
   redirect(`/klanten/${clientId}`);
 }
 
+/**
+ * Quick Log: registreert direct een contactmoment van nu, door de ingelogde
+ * trainer. Optioneel met een korte notitie.
+ */
+export async function quickLog(clientId: string, type: ContactType, notes?: string) {
+  const user = await requireUser();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.contactMoment.create({
+      data: {
+        clientId,
+        trainerId: user.id,
+        type: contactType(type),
+        date: new Date(),
+        notes: notes?.trim() || null,
+      },
+    });
+    await refreshLastContactDate(clientId, tx);
+  });
+
+  revalidateAll();
+}
+
 export async function deleteContactMoment(clientId: string, id: string) {
-  await prisma.contactMoment.delete({ where: { id } });
-  revalidateClient(clientId);
+  await requireUser();
+  await prisma.$transaction(async (tx) => {
+    await tx.contactMoment.delete({ where: { id } });
+    await refreshLastContactDate(clientId, tx);
+  });
+  revalidateAll();
+}
+
+// ---- Geplande taken / vervolgcontacten ----
+
+export async function createScheduledTask(clientId: string, formData: FormData) {
+  const user = await requireUser();
+
+  await prisma.scheduledTask.create({
+    data: {
+      clientId,
+      trainerId: await trainerIdOrDefault(formData, user.id),
+      dueDate: parseDueDate(required(formData, "dueDate")),
+      note: required(formData, "note"),
+    },
+  });
+
+  revalidateAll();
+  redirect(`/klanten/${clientId}`);
+}
+
+/**
+ * Rondt een taak af. Met `logAs` wordt de taak direct omgezet in een gelogd
+ * contactmoment (nu, door de ingelogde trainer), gekoppeld aan de taak.
+ */
+export async function completeTask(taskId: string, logAs: ContactType | null, notes?: string) {
+  const user = await requireUser();
+
+  await prisma.$transaction(async (tx) => {
+    const task = await tx.scheduledTask.findUniqueOrThrow({ where: { id: taskId } });
+    if (task.completed) return;
+
+    let contactMomentId: string | null = null;
+    if (logAs) {
+      const cm = await tx.contactMoment.create({
+        data: {
+          clientId: task.clientId,
+          trainerId: user.id,
+          type: contactType(logAs),
+          date: new Date(),
+          notes: notes?.trim() || task.note,
+        },
+      });
+      contactMomentId = cm.id;
+    }
+
+    await tx.scheduledTask.update({
+      where: { id: taskId },
+      data: { completed: true, completedAt: new Date(), contactMomentId },
+    });
+
+    if (logAs) await refreshLastContactDate(task.clientId, tx);
+  });
+
+  revalidateAll();
+}
+
+export async function reopenTask(taskId: string) {
+  await requireUser();
+  await prisma.scheduledTask.update({
+    where: { id: taskId },
+    data: { completed: false, completedAt: null },
+  });
+  revalidateAll();
+}
+
+export async function deleteScheduledTask(taskId: string) {
+  await requireUser();
+  await prisma.scheduledTask.delete({ where: { id: taskId } });
+  revalidateAll();
 }
 
 // ---- InBody metingen ----
 
 export async function createInBodyMeasurement(clientId: string, formData: FormData) {
-  const date = dateOrNull(formData, "date") ?? new Date();
+  const user = await requireUser();
+  const dateValue = str(formData, "date");
+  const date = dateValue ? parseLocalDateTime(dateValue) : new Date();
   const linkContactMoment = formData.get("createContactMoment") === "on";
 
   await prisma.$transaction(async (tx) => {
@@ -71,6 +192,7 @@ export async function createInBodyMeasurement(clientId: string, formData: FormDa
       const cm = await tx.contactMoment.create({
         data: {
           clientId,
+          trainerId: user.id,
           type: ContactType.INBODY,
           date,
           summary: "InBody-meting",
@@ -95,20 +217,24 @@ export async function createInBodyMeasurement(clientId: string, formData: FormDa
         notes: str(formData, "notes"),
       },
     });
+
+    if (linkContactMoment) await refreshLastContactDate(clientId, tx);
   });
 
-  revalidateClient(clientId);
+  revalidateAll();
   redirect(`/klanten/${clientId}`);
 }
 
 export async function deleteInBodyMeasurement(clientId: string, id: string) {
+  await requireUser();
   await prisma.inBodyMeasurement.delete({ where: { id } });
-  revalidateClient(clientId);
+  revalidateAll();
 }
 
 // ---- Voedingsanalyses ----
 
 export async function createNutritionAnalysis(clientId: string, formData: FormData) {
+  await requireUser();
   await prisma.nutritionAnalysis.create({
     data: {
       clientId,
@@ -121,18 +247,20 @@ export async function createNutritionAnalysis(clientId: string, formData: FormDa
       advice: str(formData, "advice"),
     },
   });
-  revalidateClient(clientId);
+  revalidateAll();
   redirect(`/klanten/${clientId}`);
 }
 
 export async function deleteNutritionAnalysis(clientId: string, id: string) {
+  await requireUser();
   await prisma.nutritionAnalysis.delete({ where: { id } });
-  revalidateClient(clientId);
+  revalidateAll();
 }
 
 // ---- Doelen ----
 
 export async function createGoal(clientId: string, formData: FormData) {
+  await requireUser();
   await prisma.goal.create({
     data: {
       clientId,
@@ -140,23 +268,26 @@ export async function createGoal(clientId: string, formData: FormData) {
       targetDate: dateOrNull(formData, "targetDate"),
     },
   });
-  revalidateClient(clientId);
+  revalidateAll();
   redirect(`/klanten/${clientId}`);
 }
 
 export async function updateGoalStatus(clientId: string, goalId: string, status: GoalStatus) {
+  await requireUser();
   await prisma.goal.update({ where: { id: goalId }, data: { status } });
-  revalidateClient(clientId);
+  revalidateAll();
 }
 
 export async function deleteGoal(clientId: string, id: string) {
+  await requireUser();
   await prisma.goal.delete({ where: { id } });
-  revalidateClient(clientId);
+  revalidateAll();
 }
 
 // ---- Actiepunten ----
 
 export async function createActionItem(clientId: string, formData: FormData) {
+  await requireUser();
   const goalId = str(formData, "goalId");
   await prisma.actionItem.create({
     data: {
@@ -166,19 +297,21 @@ export async function createActionItem(clientId: string, formData: FormData) {
       dueDate: dateOrNull(formData, "dueDate"),
     },
   });
-  revalidateClient(clientId);
+  revalidateAll();
   redirect(`/klanten/${clientId}`);
 }
 
 export async function toggleActionItem(clientId: string, id: string, currentStatus: ActionItemStatus) {
+  await requireUser();
   await prisma.actionItem.update({
     where: { id },
     data: { status: currentStatus === ActionItemStatus.OPEN ? ActionItemStatus.AFGEROND : ActionItemStatus.OPEN },
   });
-  revalidateClient(clientId);
+  revalidateAll();
 }
 
 export async function deleteActionItem(clientId: string, id: string) {
+  await requireUser();
   await prisma.actionItem.delete({ where: { id } });
-  revalidateClient(clientId);
+  revalidateAll();
 }

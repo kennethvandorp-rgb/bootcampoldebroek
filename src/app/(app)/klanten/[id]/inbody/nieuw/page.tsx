@@ -1,3 +1,4 @@
+import { toDateTimeInputValue } from "@/lib/domain";
 import FormCard from "@/components/FormCard";
 import { TextField, TextAreaField, SubmitButton } from "@/components/fields";
 import { createInBodyMeasurement } from "../../actions";
@@ -12,7 +13,7 @@ export default async function NewInBodyMeasurementPage({ params }: { params: Pro
       backHref={`/klanten/${id}`}
     >
       <form action={createInBodyMeasurement.bind(null, id)} className="space-y-4">
-        <TextField label="Datum" name="date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
+        <TextField label="Datum en tijd" name="date" type="datetime-local" defaultValue={toDateTimeInputValue()} />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <TextField label="Gewicht (kg)" name="weightKg" type="number" />

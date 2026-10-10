@@ -1,33 +1,50 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { createSession, destroySession, hashPassword, verifyPassword } from "@/lib/auth";
 
-const SESSION_COOKIE = "pt_session";
+function safeRedirectTarget(from: string): string {
+  // Alleen interne paden, om open redirects te voorkomen
+  return from.startsWith("/") && !from.startsWith("//") && from !== "/login" ? from : "/";
+}
 
 export async function login(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
-  const from = String(formData.get("from") ?? "/");
-  const appPassword = process.env.APP_PASSWORD;
+  const from = safeRedirectTarget(String(formData.get("from") ?? "/"));
 
-  if (!appPassword || password !== appPassword) {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || !user.active || !(await verifyPassword(password, user.passwordHash))) {
     redirect(`/login?from=${encodeURIComponent(from)}&error=1`);
   }
 
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, password, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 30,
-    path: "/",
+  await createSession(user.id);
+  redirect(from);
+}
+
+/** Eerste installatie: maakt de eerste beheerder aan zolang er nog geen accounts zijn. */
+export async function setupFirstAdmin(formData: FormData) {
+  if ((await prisma.user.count()) > 0) {
+    redirect("/login");
+  }
+
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  if (!name || !email || password.length < 8) {
+    redirect("/login?error=setup");
+  }
+
+  const user = await prisma.user.create({
+    data: { name, email, role: "ADMIN", passwordHash: await hashPassword(password) },
   });
 
-  redirect(from && from !== "/login" ? from : "/");
+  await createSession(user.id);
+  redirect("/");
 }
 
 export async function logout() {
-  const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE);
+  await destroySession();
   redirect("/login");
 }
